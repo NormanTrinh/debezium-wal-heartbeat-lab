@@ -1,0 +1,15 @@
+{
+  "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+  "plugin.name": "pgoutput",
+  "database.hostname": "postgres",
+  "database.port": "5432",
+  "database.user": "debezium",
+  "database.password": "dbz",
+  "database.dbname": "mydatabase",
+  "topic.prefix": "intonly",
+  "slot.name": "slot_interval_only",
+  "publication.name": "pub_no_hb",
+  "publication.autocreate.mode": "disabled",
+  "table.include.list": "public.customers",
+  "heartbeat.interval.ms": "10000"
+}

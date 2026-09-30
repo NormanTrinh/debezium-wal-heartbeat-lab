@@ -1,0 +1,107 @@
+# WAL fill-up lab: Postgres (logical WAL) + Kafka (KRaft) + Debezium Connect 2.7 + Kafka UI.
+# Isolated from the scala-spark stack: own project name, container names, host ports and volumes.
+
+name: pgwal
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: pgwal_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: myuser
+      POSTGRES_PASSWORD: mypassword
+      POSTGRES_DB: mydatabase
+    command:
+      - postgres
+      - -c
+      - wal_level=logical            # required for logical decoding / Debezium
+      - -c
+      - max_wal_senders=10
+      - -c
+      - max_replication_slots=10
+      - -c
+      - max_wal_size=256MB           # small, so healthy pg_wal stays small and growth is obvious
+      - -c
+      - min_wal_size=80MB
+      - -c
+      - checkpoint_timeout=30s       # WAL is only removed at checkpoints; make that frequent
+      # max_slot_wal_keep_size is left at its default (-1 = unlimited: a stuck slot retains WAL
+      # forever). Not set here on purpose: -c flags override ALTER SYSTEM, and `sim.sh guardrail`
+      # changes it at runtime.
+    ports:
+      - "0.0.0.0:5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./sql:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      # TCP check: the temporary server that runs init scripts listens on the socket only.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U myuser -d mydatabase"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  kafka:
+    image: bitnamilegacy/kafka:3.9
+    container_name: pgwal_kafka
+    restart: unless-stopped
+    environment:
+      KAFKA_CFG_NODE_ID: 0
+      KAFKA_CFG_PROCESS_ROLES: controller,broker
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 0@kafka:9093
+      KAFKA_CFG_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CFG_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_CFG_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_CFG_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_CFG_TRANSACTION_STATE_LOG_MIN_ISR: 1
+    volumes:
+      - kafka_data:/bitnami/kafka
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/bitnami/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+
+  connect:
+    image: quay.io/debezium/connect:2.7.4.Final
+    container_name: pgwal_connect
+    restart: unless-stopped
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    environment:
+      BOOTSTRAP_SERVERS: kafka:9092
+      GROUP_ID: pgwal
+      CONFIG_STORAGE_TOPIC: pgwal_configs
+      OFFSET_STORAGE_TOPIC: pgwal_offsets
+      STATUS_STORAGE_TOPIC: pgwal_statuses
+      # Debezium acknowledges the LSN to Postgres when Connect commits offsets.
+      # Default is 60s; 10s makes the heartbeat effect visible quickly.
+      OFFSET_FLUSH_INTERVAL_MS: 10000
+    ports:
+      - "8083:8083"
+
+  kafka-ui:
+    image: kafbat/kafka-ui:v1.5.0
+    container_name: pgwal_kafka_ui
+    restart: unless-stopped
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_CLUSTERS_0_NAME: pgwal
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+      KAFKA_CLUSTERS_0_KAFKACONNECT_0_NAME: connect
+      KAFKA_CLUSTERS_0_KAFKACONNECT_0_ADDRESS: http://connect:8083
+    ports:
+      - "8080:8080"
+
+volumes:
+  pg_data:
+  kafka_data:

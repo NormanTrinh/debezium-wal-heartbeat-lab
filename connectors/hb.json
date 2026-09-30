@@ -1,0 +1,16 @@
+{
+  "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+  "plugin.name": "pgoutput",
+  "database.hostname": "postgres",
+  "database.port": "5432",
+  "database.user": "debezium",
+  "database.password": "dbz",
+  "database.dbname": "mydatabase",
+  "topic.prefix": "hb",
+  "slot.name": "slot_hb",
+  "publication.name": "pub_hb",
+  "publication.autocreate.mode": "disabled",
+  "table.include.list": "public.customers",
+  "heartbeat.interval.ms": "10000",
+  "heartbeat.action.query": "UPDATE public.debezium_heartbeat SET ts = now() WHERE id = 1"
+}

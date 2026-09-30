@@ -1,0 +1,15 @@
+run,t_s,event
+no-hb,0,start
+no-hb,30,load_start
+no-hb,210,load_end
+no-hb,270,fix
+no-hb,510,end
+interval-only,0,start
+interval-only,30,load_start
+interval-only,210,load_end
+interval-only,270,fix
+interval-only,510,end
+hb,0,start
+hb,30,load_start
+hb,210,load_end
+hb,510,end
