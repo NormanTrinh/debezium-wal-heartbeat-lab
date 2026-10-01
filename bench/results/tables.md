@@ -2,7 +2,7 @@
 |---|---|---|---|---|---|---|
 | No heartbeat | 7.7 GB | 7.8 GB | 7.6 GB | 7.8 GB | 224 MB | 95 s after heartbeat table added |
 | Heartbeat messages only | 7.7 GB | 7.7 GB | 7.6 GB | 7.7 GB | 256 MB | 61 s after heartbeat table added |
-| Heartbeat table | 8.1 GB | 2.9 GB | 1.8 GB | — (has it from the start) | 256 MB | 33 s after load end |
+| Heartbeat table | 8.1 GB | 2.9 GB | 1.8 GB | - (has it from the start) | 256 MB | 33 s after load end |
 
 | Time | Phase | No heartbeat | Heartbeat messages only | Heartbeat table |
 |---|---|---|---|---|

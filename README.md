@@ -4,6 +4,25 @@ A local lab that shows a Debezium PostgreSQL connector (`pgoutput`) making `pg_w
 without limit when the captured table is quiet but other tables are busy, and how a
 **heartbeat table** (included in the publication and written by `heartbeat.action.query`) stops it.
 
+## The result at a glance
+
+![pg_wal size over time for each setup](bench/results/pg_wal.svg)
+
+*Same 3-minute load (7.7-8.1 GB of WAL on a table Debezium does not capture), one connector setup
+per panel. Colored line = `pg_wal` on disk, gray line = all WAL written since the start. When the
+two lines overlap, Postgres deleted nothing. The vertical line marks the moment the heartbeat
+table was added to the running connector.*
+
+- **No heartbeat:** `pg_wal` keeps every byte, growing to 7.8 GB, and stays there.
+- **Heartbeat messages only (`heartbeat.interval.ms`):** same as no heartbeat, 7.7 GB kept,
+  although the connector looks healthy.
+- **Heartbeat table in the publication:** `pg_wal` peaks at 2.9 GB under load and is back to
+  256 MB 33 s after the load stops. Adding it to the stuck connectors later frees the WAL in 1-2 minutes.
+
+Full numbers and method: [BENCHMARK.md](BENCHMARK.md).
+
+## The lab
+
 Stack (`docker-compose.yml`, compose project `pgwal`, isolated from other stacks):
 
 | Service | Container | Host port |
@@ -54,7 +73,7 @@ volumes). Run `./sim.sh help` for details. You can tune the load with `NOISE_ROW
 `WAL_CAP_MB` and `NOISE_SECONDS`.
 
 **Benchmark:** [BENCHMARK.md](BENCHMARK.md) has a bigger, timed test (about 8 GB of WAL per run,
-one setup at a time) with a chart and time-series tables. Run it with `bench/run.sh` and then
+one setup at a time) behind the chart above, with time-series tables. Run it with `bench/run.sh` and then
 `python3 bench/plot.py`.
 
 How to read `monitor`:
@@ -77,9 +96,11 @@ How to read `monitor`:
    forward, and the next offset commit acknowledges it. Postgres then removes old segments at
    the next checkpoint.
 
-An UPDATE works as well as the INSERT in the docs. Any committed change to a published table
-produces a transaction the slot must send. The docs say the same: "inserting a new row or
-repeatedly updating the same row". Updating one row keeps the table at one row; the docs'
+An UPDATE works as well as the INSERT in the
+[Debezium docs](https://debezium.io/documentation/reference/2.7/connectors/postgresql.html#postgresql-property-heartbeat-action-query).
+Any committed change to a published table produces a transaction the slot must send. The
+[WAL disk space section](https://debezium.io/documentation/reference/2.7/connectors/postgresql.html#postgresql-wal-disk-space)
+says the same: "inserting a new row or repeatedly updating the same row". Updating one row keeps the table at one row; the docs'
 `INSERT` example grows forever.
 
 The heartbeat table does **not** need to be in `table.include.list`. Its changes reach Debezium
@@ -170,8 +191,10 @@ checkpoint.
 ## Trade-offs of the heartbeat table
 
 - **Needed on PG 15+ with a filtered publication.** `heartbeat.interval.ms` alone does not help
-  here, because no transactions reach the connector. The docs' "easily solved with
-  heartbeat.interval.ms" applies when the connector still receives transactions: before PG 15,
+  here, because no transactions reach the connector. The docs' "This situation can be easily
+  solved with periodic heartbeat events" (set `heartbeat.interval.ms`,
+  [WAL disk space consumption](https://debezium.io/documentation/reference/2.7/connectors/postgresql.html#postgresql-wal-disk-space))
+  applies when the connector still receives transactions: before PG 15,
   when pgoutput also sent empty transactions, or when the busy tables are in the publication and
   only filtered out by Debezium.
 - **The table must be in the publication.** With `publication.autocreate.mode=filtered`, Debezium
@@ -193,7 +216,7 @@ checkpoint.
 - **Extra Kafka traffic:** a `__debezium-heartbeat.<topic.prefix>` topic with one message per interval.
 - **Acknowledgement delay** is about `heartbeat.interval.ms` + `offset.flush.interval.ms`, plus
   Postgres's own delay in moving `restart_lsn`. This bounds, but does not remove, the WAL a
-  healthy slot retains: 270–660 MB here at ~16 MB/s with 10 s / 10 s settings. Make both
+  healthy slot retains: 270-660 MB here at ~16 MB/s with 10 s / 10 s settings. Make both
   intervals short, and keep `max_slot_wal_keep_size` well above this figure.
 - **It does nothing while the connector is down.** An inactive slot still retains WAL. You still
   need slot monitoring (`pg_replication_slots`) and ideally `max_slot_wal_keep_size`, which
@@ -203,3 +226,24 @@ checkpoint.
   `pg_current_wal_lsn() - restart_lsn` and `wal_status` in `pg_replication_slots`.
 - **Neighbour databases** (`./sim.sh noise busydb`) cause the same problem, because WAL is
   shared by the whole cluster. This is the case the docs describe for `heartbeat.action.query`.
+
+---
+
+## Why this lab exists
+
+I hit this problem in production: a Debezium connector's replication slot stopped moving,
+`pg_wal` kept growing, and I had to delete the slot to stop it. This lab reproduces that
+situation, so the cause and the fix (a heartbeat table) can be shown and measured, not guessed.
+
+The lab is based on the
+[Debezium 2.7 PostgreSQL connector documentation](https://debezium.io/documentation/reference/2.7/connectors/postgresql.html),
+and tests its advice on these points:
+
+- [WAL disk space consumption](https://debezium.io/documentation/reference/2.7/connectors/postgresql.html#postgresql-wal-disk-space):
+  why WAL grows when the captured tables are quiet, and the heartbeat fix
+- [`heartbeat.interval.ms`](https://debezium.io/documentation/reference/2.7/connectors/postgresql.html#postgresql-property-heartbeat-interval-ms)
+  and [`heartbeat.action.query`](https://debezium.io/documentation/reference/2.7/connectors/postgresql.html#postgresql-property-heartbeat-action-query)
+- [`publication.autocreate.mode`](https://debezium.io/documentation/reference/2.7/connectors/postgresql.html#postgresql-publication-autocreate-mode)
+
+The test scenarios, the benchmark and this write-up came out of brainstorming sessions between me
+and [Claude](https://www.anthropic.com/claude) (Anthropic's AI assistant, used through Claude Code).

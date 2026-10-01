@@ -51,16 +51,16 @@ keep moving forward, so Postgres can delete old WAL?**
 
 **Load.** Every transaction inserts 20,000 rows of about 1 KB into `public.noise`, and then
 `TRUNCATE`s it. There is no pause between transactions. The load runs for 180 s and writes
-about 7.7–8.1 GB of WAL, which is about 44 MB/s on average (faster at the start).
+about 7.7-8.1 GB of WAL, which is about 44 MB/s on average (faster at the start).
 
 **Timeline of each run** (the same for all three):
 
 | Time | Phase | What happens |
 |---|---|---|
-| 0:00 – 0:30 | idle | no load |
-| 0:30 – 3:30 | load | heavy load on `noise` |
-| 3:30 – 4:30 | wait | no load, nothing changes |
-| 4:30 – 8:30 | after | **No heartbeat** and **Heartbeat messages only**: at 4:30 we add the heartbeat table to the running connector (`./sim.sh fix`). **Heartbeat table**: it already has one, so we just watch. |
+| 0:00 - 0:30 | idle | no load |
+| 0:30 - 3:30 | load | heavy load on `noise` |
+| 3:30 - 4:30 | wait | no load, nothing changes |
+| 4:30 - 8:30 | after | **No heartbeat** and **Heartbeat messages only**: at 4:30 we add the heartbeat table to the running connector (`./sim.sh fix`). **Heartbeat table**: it already has one, so we just watch. |
 
 Adding the heartbeat table (`./sim.sh fix`) does what you would do in production:
 
@@ -92,7 +92,7 @@ Sizes use 1 GB = 1024³ bytes.
 |---|---|---|---|---|---|---|
 | No heartbeat | 7.7 GB | 7.8 GB | 7.6 GB | 7.8 GB | 224 MB | 95 s after heartbeat table added |
 | Heartbeat messages only | 7.7 GB | 7.7 GB | 7.6 GB | 7.7 GB | 256 MB | 61 s after heartbeat table added |
-| Heartbeat table | 8.1 GB | 2.9 GB | 1.8 GB | — (has it from the start) | 256 MB | 33 s after load end |
+| Heartbeat table | 8.1 GB | 2.9 GB | 1.8 GB | - (has it from the start) | 256 MB | 33 s after load end |
 
 ### Time series (pg_wal size on disk, every 30 s)
 
@@ -132,14 +132,14 @@ receives nothing from the slot. The result is the same as with no heartbeat.
 publication, so this change goes through the slot. Debezium confirms its position (at the next
 offset flush), and at the next checkpoint Postgres deletes the old WAL files. This is the
 up-and-down line in the third panel. It is not flat: during heavy load it still keeps about
-1–3 GB. That amount is roughly *write speed × time to confirm*. Here the time to confirm is
-about 20–50 s:
+1-3 GB. That amount is roughly *write speed × time to confirm*. Here the time to confirm is
+about 20-50 s:
 - up to 10 s until the next heartbeat;
 - up to 10 s until the next offset flush;
 - the time Postgres needs to move `restart_lsn`;
 - up to 30 s until the next checkpoint deletes the files.
 
-At 44–80 MB/s this adds up to GBs. When the load stops, `pg_wal` goes back to 256 MB within
+At 44-80 MB/s this adds up to GBs. When the load stops, `pg_wal` goes back to 256 MB within
 about 30 s.
 
 **After adding the heartbeat table.** The WAL went down, but not right away:
@@ -165,11 +165,11 @@ Why it takes this long:
    - During heavy load, the WAL stayed under 2.9 GB.
    - It went back to normal about 30 s after the load stopped.
    - It also works when added to a connector that is already running: the WAL went down
-     within 1–2 minutes.
+     within 1-2 minutes.
 4. **The cost is very small.**
    - One table with one row, 56 kB on disk.
    - One UPDATE every 10 s is 8,640 per day. Each one writes about 139 bytes of WAL (about
-     2 KB for the first one after a checkpoint), so together about **1–2 MB of WAL per day**.
+     2 KB for the first one after a checkpoint), so together about **1-2 MB of WAL per day**.
      Compare that with the 7.7 GB in 3 minutes that can pile up without it.
 5. **It is not the only protection.** If the connector is stopped or broken, the slot still
    keeps WAL, and the heartbeat cannot help. Keep an alert on the WAL kept by each slot, and
@@ -219,7 +219,7 @@ lists only some tables (`FOR TABLE ...`).
 You may not need it when:
 - The captured tables change all the time (every few seconds, day and night), **and** there is
   no big WAL writer outside the publication. Even then it is cheap insurance. After a quiet
-  time, one change may not be enough to free the WAL: in the README test, it took 2–3 changes.
+  time, one change may not be enough to free the WAL: in the README test, it took 2-3 changes.
 - The publication is `FOR ALL TABLES`. The busy tables are then in the publication, so the
   connector receives their changes and can move forward. The Debezium docs say
   `heartbeat.interval.ms` is enough here, but Debezium then receives every change from every

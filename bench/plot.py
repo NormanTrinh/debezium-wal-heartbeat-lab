@@ -198,7 +198,7 @@ def tables(samples, events):
         back = f"{low['t'] - ref} s after {'heartbeat table added' if 'fix' in ev else 'load end'}" if low else "no"
         lines.append(f"| {title} | {fmt_gb(pts[-1]['written'])} | {fmt_gb(max(p['pg_wal'] for p in pts))} | "
                      f"{fmt_gb(at(pts, ev['load_end'])['pg_wal'])} | "
-                     f"{fmt_gb(before['pg_wal']) if 'fix' in ev else '— (has it from the start)'} | "
+                     f"{fmt_gb(before['pg_wal']) if 'fix' in ev else '- (has it from the start)'} | "
                      f"{fmt_gb(pts[-1]['pg_wal'])} | {back} |")
 
     if not runs:
