@@ -235,10 +235,12 @@ For example, 1 MB/s × a 60-hour weekend ≈ 211 GB. To measure the write speed,
 
 **How to check a server that already runs Debezium.** Run this a few times during a quiet
 period. If `wal_kept_by_slot` keeps growing while the connector is RUNNING, you need the
-heartbeat table.
+heartbeat table. If `wal_status` is `unreserved` or `lost`, `max_slot_wal_keep_size` is about to
+remove (or has removed) WAL the slot still needs: a `lost` slot must be dropped and the
+connector needs a new snapshot, even if it still reports RUNNING.
 
 ```sql
-SELECT slot_name, active,
+SELECT slot_name, active, wal_status,
        pg_size_pretty(pg_current_wal_lsn() - restart_lsn)         AS wal_kept_by_slot,
        pg_size_pretty(pg_current_wal_lsn() - confirmed_flush_lsn) AS not_confirmed
 FROM pg_replication_slots
